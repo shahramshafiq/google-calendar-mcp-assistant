@@ -1,12 +1,15 @@
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, AsyncExitStack
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 from app.config import settings
 from app.routes import chat
+from app.services import assistant_service
 from app.utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -16,10 +19,17 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info(f"Starting Task Assistant, using model {settings.openai_model}")
-    # TODO once the MCP client is built in assistant_service.py: start the MCP server
-    # subprocess and open the ClientSession here, so it's reused across requests instead
-    # of relaunching the subprocess on every single chat message.
-    yield
+
+    async with AsyncExitStack() as stack:
+        server_params = StdioServerParameters(command="venv/Scripts/python.exe", args=["-m", "app.mcp_server.server"])
+        read, write = await stack.enter_async_context(stdio_client(server_params))
+        session = await stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+        assistant_service.set_session(session)
+        logger.info("MCP Toolbox connected")
+
+        yield
+
     logger.info("Application shutting down")
 
 
@@ -42,6 +52,4 @@ def health():
 
 app.include_router(chat.router)
 
-# Mounted last and at "/": the explicit /health and /chat routes above are matched first,
-# anything else falls through to serving the frontend's static files.
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
