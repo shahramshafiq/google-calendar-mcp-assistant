@@ -54,18 +54,22 @@ async def handle_message(user_message: str) -> dict:
         messages.append(message)
 
         if not message.tool_calls:
+            print(messages)
             return {"answer": message.content, "tool_calls": tool_calls_made}
 
         for call in message.tool_calls:
             name = call.function.name
             args = json.loads(call.function.arguments)
             tool_calls_made.append(name)
+            print(f"LLM decided to call: {name}({args})")
 
             try:
                 result = await _session.call_tool(name, args)
-                result_text = result.content[0].text
+                result_text = result.content[0].text if result.content else "[]"
             except Exception as e:
                 result_text = f"Error calling {name}: {e}"
+
+            print(f"Tool result: {result_text}")
 
             messages.append({"role": "tool", "tool_call_id": call.id, "content": result_text})
 
