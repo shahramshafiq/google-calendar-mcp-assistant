@@ -1,1 +1,9 @@
-{"tasks": []}
+{
+  "tasks": [
+    {
+      "id": "87f1c03d",
+      "title": "Test task",
+      "due_date": "2026-10-01"
+    }
+  ]
+}
