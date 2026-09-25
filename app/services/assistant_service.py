@@ -37,7 +37,7 @@ def set_session(session):
 async def get_openai_tools():
     mcp_tools = await _session.list_tools()
     return [
-        {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.inputSchema}}
+        {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.input_schema}}
         for t in mcp_tools.tools
     ]
 
