@@ -16,19 +16,10 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/chat")
-def post_chat(body: ChatRequest):
+async def post_chat(body: ChatRequest):
     try:
-        result = handle_message(body.message)
+        result = await handle_message(body.message)
         return {"message": body.message, "answer": result["answer"], "tool_calls": result["tool_calls"]}
-
-    except NotImplementedError:
-        return JSONResponse(
-            content={
-                "error": "NOT_IMPLEMENTED",
-                "message": "The assistant logic in app/services/assistant_service.py hasn't been built yet.",
-            },
-            status_code=501,
-        )
 
     except Exception:
         logger.exception(f"Failed to handle chat message: {body.message!r}")
