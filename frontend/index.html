@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Task Assistant</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Task Assistant</h1>
+      <p class="subtitle">Testing UI for the MCP task/calendar assistant</p>
+    </header>
+
+    <main id="messages" class="messages">
+      <div class="message assistant">
+        <div class="bubble">
+          Hi, ask me about your tasks or calendar. For example: "show me my pending tasks"
+          or "what meetings do I have tomorrow?"
+        </div>
+      </div>
+    </main>
+
+    <form id="chat-form" class="input-row">
+      <input
+        id="chat-input"
+        type="text"
+        placeholder="Type a message..."
+        autocomplete="off"
+        required
+      />
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
