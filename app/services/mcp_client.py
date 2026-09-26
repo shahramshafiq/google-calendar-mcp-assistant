@@ -17,6 +17,8 @@ async def get_openai_tools():
 async def call_tool(name: str, args: dict) -> str:
     try:
         result = await _session.call_tool(name, args)
-        return result.content[0].text if result.content else "[]"
+        if not result.content:
+            return "[]"
+        return "\n".join(block.text for block in result.content)
     except Exception as e:
         return f"Error calling {name}: {e}"

@@ -4,6 +4,16 @@
       "id": "87f1c03d",
       "title": "Test task",
       "due_date": "2026-10-01"
+    },
+    {
+      "id": "d2541013",
+      "title": "Complete project MCP Task Assistant",
+      "due_date": "2026-09-26"
+    },
+    {
+      "id": "7dd96cdd",
+      "title": "test task 2",
+      "due_date": "2026-09-27"
     }
   ]
 }
