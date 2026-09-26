@@ -1,0 +1,22 @@
+_session = None
+
+
+def set_session(session):
+    global _session
+    _session = session
+
+
+async def get_openai_tools():
+    mcp_tools = await _session.list_tools()
+    return [
+        {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.input_schema}}
+        for t in mcp_tools.tools
+    ]
+
+
+async def call_tool(name: str, args: dict) -> str:
+    try:
+        result = await _session.call_tool(name, args)
+        return result.content[0].text if result.content else "[]"
+    except Exception as e:
+        return f"Error calling {name}: {e}"

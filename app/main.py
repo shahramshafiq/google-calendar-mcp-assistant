@@ -9,7 +9,7 @@ from mcp.client.stdio import stdio_client
 
 from app.config import settings
 from app.routes import chat
-from app.services import assistant_service
+from app.services import mcp_client
 from app.utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
         read, write = await stack.enter_async_context(stdio_client(server_params))
         session = await stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
-        assistant_service.set_session(session)
+        mcp_client.set_session(session)
         logger.info("MCP Toolbox connected")
 
         yield
