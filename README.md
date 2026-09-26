@@ -1,10 +1,6 @@
 # MCP Task Assistant
 
-An AI assistant that manages tasks and real Google Calendar events through exactly 4 MCP tools,
-built as a small MCP project ("AI Task Assistant"). Ask it things like
-"show me my pending tasks" or "book a meeting tomorrow at 3 PM", it reasons about which of its
-4 tools to use, calls them for real through the Model Context Protocol, and replies in plain
-language.
+An AI assistant that manages tasks and real Google Calendar events through exactly 4 MCP tools. Ask it things like "show me my pending tasks" or "book a meeting tomorrow at 3 PM", it reasons about which of its 4 tools to use, calls them for real through the Model Context Protocol, and replies in plain language.
 
 ## Architecture
 
