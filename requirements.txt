@@ -1,8 +1,12 @@
 fastapi==0.141.1
-google_api_python_client==2.200.0
-google_auth_oauthlib==1.4.1
-mcp==2.2.0
+uvicorn[standard]==0.54.0
+python-dotenv==1.2.3
+mcp[cli]==2.2.0
 openai==3.19.2
-protobuf==7.36.2
+google_api_python_client==2.200.0
+google_auth_httplib2==0.4.2
+google_auth_oauthlib==1.4.1
+tzdata==2026.4
 pydantic==2.13.5
 pydantic_settings==2.15.0
+protobuf==7.36.2
