@@ -1,143 +1,143 @@
+<div align="center">
+
 # MCP Task Assistant
 
-An AI assistant that manages tasks and real Google Calendar events through exactly 4 MCP tools. Ask it things like "show me my pending tasks" or "book a meeting tomorrow at 3 PM", it reasons about which of its 4 tools to use, calls them for real through the Model Context Protocol, and replies in plain language.
+A chat assistant that reads and books Google Calendar events and manages a task list through its own MCP server.
 
-## Architecture
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-stdio-5A4FCF?style=flat-square)
+![OpenAI](https://img.shields.io/badge/OpenAI-gpt--4.1--mini-412991?style=flat-square&logo=openai&logoColor=white)
+![Google Calendar](https://img.shields.io/badge/Google%20Calendar-API%20v3-4285F4?style=flat-square&logo=googlecalendar&logoColor=white)
 
-```
-Browser (frontend/)
-      |
-      v
-FastAPI  POST /chat  (app/routes/chat.py)
-      |
-      v
-assistant_service.py -- the orchestration loop
-      |         |
-      v         v
-conversation_memory.py   mcp_client.py -- talks to the MCP server
-  (remembers the              |
-   conversation)          stdio transport
-                               |
-                               v
-                    mcp_server/server.py
-                    (the real, separate MCP server process,
-                     launched once at startup, kept alive
-                     for the app's whole lifetime)
-                          /            \
-                 task_store.py    google_calendar_service.py
-                 (local JSON       (real Google Calendar API,
-                  file)             with conflict checking)
-```
+</div>
 
-The assistant never calls the 4 tools directly. It goes through a real MCP client talking, over
-the actual MCP protocol (stdio transport), to a separate MCP server process, exactly the
-User → LLM/assistant → MCP client → MCP server → tools diagram the assignment itself describes.
+## Overview
 
-## The 4 MCP tools
+This project lets you manage a task list and a Google Calendar in plain language, for example "show me my pending tasks" or "book a meeting tomorrow at 3 PM". A FastAPI backend sends each message to an OpenAI model, which decides which of four tools to call. The tools run in a separate MCP server process that the backend talks to over the Model Context Protocol (stdio transport), and the model turns the results into a plain-language reply.
 
-| Tool | Description | Parameters | Returns |
-|---|---|---|---|
-| `get_tasks` | Retrieve all tasks currently assigned to the user | none | list of `{id, title, due_date}` |
-| `create_task` | Create a new task | `title: str`, `due_date: str` (YYYY-MM-DD) | the created task |
-| `get_calendar_events` | Retrieve calendar events for a specific date | `date: str` (YYYY-MM-DD) | list of `{id, title, start, end}` |
-| `create_calendar_event` | Schedule a new calendar event, checks for a scheduling conflict first and refuses to double-book | `title: str`, `start_time: str`, `end_time: str` (ISO 8601) | `{"booked": true, ...}` on success, or `{"booked": false, "conflict": {...}}` if the slot is already taken |
+## Key Features
 
-Every tool's schema (name, description, parameter types) is generated automatically from its
-Python type hints and docstring in `app/mcp_server/server.py`, that's what an MCP client reads
-to know what's available and how to call it, nothing is hardcoded on the assistant's side.
+- **Real MCP architecture:** the FastAPI app starts the MCP server as a subprocess once at startup and keeps one `ClientSession` open for the lifetime of the app (`app/main.py`).
+- **Four tools, no hardcoded schemas:** `get_tasks`, `create_task`, `get_calendar_events` and `create_calendar_event` are registered in `app/mcp_server/server.py`. The assistant reads the tool list from the MCP server and converts it to OpenAI function-calling format at request time (`app/services/mcp_client.py`).
+- **Conflict-safe booking:** `create_calendar_event` lists events in the requested slot before inserting anything and returns `booked: false` with the first clashing event's title and times instead of double-booking.
+- **Bounded tool-calling loop:** the model can call tools for at most 4 rounds per message (`MAX_TOOL_ROUNDS`), then the service returns a fallback reply.
+- **Date-aware prompts:** the current date and time are injected into the system prompt on every message, so "tomorrow" and "next Friday" resolve correctly. The prompt also tells the model to ask when a title, date or time is missing, and to say so honestly when asked for something outside the four tools.
+- **Graceful failures:** a failing tool call is returned to the model as an observation rather than crashing the request (`call_tool`), and a global FastAPI handler returns a consistent `{"error": ..., "message": ...}` JSON shape.
+- **Google OAuth with token caching:** the first calendar call runs the installed-app OAuth flow and saves `credentials/token.json`; later runs reuse and refresh it.
+- **Built-in test UI:** a plain HTML, CSS and JavaScript chat page served by FastAPI that shows which tools were used for each reply.
 
-## Example request flows (tested live against the real running app)
+## Tech Stack
 
-**"Show me my tasks and tomorrow's calendar events."** The assistant recognizes this is really
-two separate requests bundled together, calls `get_tasks` and `get_calendar_events` (resolving
-"tomorrow" using the real current date and time, injected fresh into every request), and combines
-both results into one answer:
-```
-Here are your tasks:
-1. Test task, due on 2026-10-01
-2. Complete project MCP Task Assistant, due today (2026-09-26)
-3. test task 2, due tomorrow (2026-09-27)
+| Area | Technology |
+|---|---|
+| Language | Python (backend), JavaScript, HTML and CSS (frontend) |
+| Web framework | FastAPI, Uvicorn |
+| Protocol | Model Context Protocol Python SDK (`mcp` 2.2.0), stdio transport |
+| LLM | OpenAI Chat Completions with tool calling, default model `gpt-4.1-mini` |
+| Calendar | Google Calendar API v3 (`google-api-python-client`, `google-auth-oauthlib`) |
+| Configuration | pydantic-settings (loads `.env`) |
+| Storage | Local JSON file for tasks (`data/tasks.json`) |
 
-For tomorrow's calendar events (2026-09-27), you have:
-- "test task 3" from 12:11 PM to 1:11 PM (local time).
+## Project Structure
+
+```text
+app/
+  main.py                      FastAPI app, starts the MCP server and holds the client session
+  config.py                    Settings loaded from .env
+  routes/chat.py               POST /chat endpoint
+  services/
+    assistant_service.py       LLM tool-calling loop
+    mcp_client.py              MCP session wrapper, tool list and tool calls
+    conversation_memory.py     In-memory chat history
+    prompts.py                 System prompt
+    google_calendar_service.py Calendar API calls, OAuth flow, conflict check
+  mcp_server/
+    server.py                  MCP server exposing the four tools
+    task_store.py              JSON-file task storage (data/tasks.json)
+frontend/                      Plain HTML/CSS/JS chat UI
+credentials/                   Google OAuth client file and token (both git-ignored)
 ```
 
-**"Book a meeting called Team Sync on October 1st 2026 from 3 PM to 3:30 PM"**, a time slot
-that's already booked. `create_calendar_event` checks for a conflict before creating anything,
-finds one, and does **not** double-book:
-```
-There is a scheduling conflict with another event titled "Test Event" on October 1st, 2026,
-from 3 PM to 3:30 PM. Would you like to pick a different time for the "Team Sync" meeting or
-do something else?
-```
+## Getting Started
 
-## Error handling
+### Prerequisites
 
-- **A tool fails or times out:** caught in `mcp_client.call_tool()`, the error is fed back to
-  the model as a normal observation (not a crash), and the model explains the problem to the
-  user in plain language instead of the request failing outright.
-- **A required parameter is missing** (no task title, no event time): the system prompt
-  (`app/services/prompts.py`) instructs the model to ask a clarifying question rather than guess.
-- **An ambiguous date/time:** same, the model is told to ask rather than silently pick one
-  interpretation. The real current date and time are injected into the system prompt on every
-  single message, the model has no clock of its own, so "tomorrow" and "next Friday" resolve
-  correctly and stay accurate no matter how long the app has been running.
-- **A scheduling conflict:** `create_calendar_event` always checks the target time slot before
-  booking, never after. If something's already there, it refuses to create the event and reports
-  the conflict instead of double-booking, verified live above.
-- **An unsupported request** (e.g. "delete this task"): the system prompt explicitly states the
-  4 tools' real boundaries, the model says so honestly instead of pretending to comply.
-- **Any unhandled error anywhere in the request:** caught by a global FastAPI exception handler
-  (`app/main.py`), returned as a consistent `{"error": "...", "message": "..."}` shape instead of
-  a raw stack trace reaching the client.
+- Windows with Python 3 and pip. The backend launches the MCP server with `venv/Scripts/python.exe` (see `app/main.py`), so the virtual environment must be named `venv`, and the app must be started from the project root (the `frontend`, `data` and `credentials` paths are relative too).
+- An OpenAI API key.
+- A Google Cloud project with the Calendar API enabled and an OAuth 2.0 client ID of type Desktop app.
 
-## Setup
+### Installation
 
-1. Create the venv and install dependencies:
-   ```bash
-   python -m venv venv
-   venv/Scripts/pip install -r requirements.txt
-   ```
-2. Copy `.env.example` to `.env` and add your OpenAI API key.
-3. For Google Calendar: create a project in Google Cloud Console, enable the Calendar API,
-   create OAuth 2.0 credentials (Desktop app), download as `credentials/credentials.json`.
-   The first real run opens a browser to authorize access, and remembers it afterward via
-   `credentials/token.json`.
-
-## Running
-
-```bash
-venv/Scripts/uvicorn app.main:app --reload --port 8000
+```powershell
+python -m venv venv
+venv\Scripts\pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-Open `http://localhost:8000` for the testing frontend. `POST /chat` is the API itself, body
-shape `{"message": "..."}`, returns `{"answer": ..., "tool_calls": [...]}`.
+Edit `.env` and set the variables below. `OPENAI_MODEL` defaults to `gpt-4.1-mini` in code, so set it to a real model name or delete the placeholder line.
 
-## Project structure
+| Variable | Required | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | Yes | OpenAI API key |
+| `OPENAI_MODEL` | No | Chat model name (default `gpt-4.1-mini`) |
+| `GOOGLE_CREDENTIALS_PATH` | No | OAuth client file (default `credentials/credentials.json`) |
+| `GOOGLE_TOKEN_PATH` | No | Saved OAuth token (default `credentials/token.json`) |
+| `TASK_STORE_PATH` | No | Task file (default `data/tasks.json`) |
 
-- `app/main.py` — FastAPI app; connects to the MCP server once at startup (`AsyncExitStack`)
-  and keeps that one connection alive for the app's whole lifetime, rather than reconnecting
-  per message.
-- `app/routes/chat.py` — the one API endpoint, `POST /chat`.
-- `app/services/assistant_service.py` — the orchestration loop: ask the LLM, call tools through
-  MCP if it asks to, feed results back, repeat until there's a final answer (bounded, so it can
-  never loop forever).
-- `app/services/mcp_client.py` — everything about talking to the MCP server: holding the
-  connection, converting its tools into OpenAI's function-calling format, calling a tool and
-  safely handling its result.
-- `app/services/conversation_memory.py` — remembers the conversation across separate messages.
-- `app/services/prompts.py` — the system prompt, including the assistant's real boundaries and
-  its error-handling instructions.
-- `app/services/google_calendar_service.py` — real Google Calendar API calls, including the
-  OAuth login flow and the pre-booking conflict check.
-- `app/mcp_server/server.py` — the actual MCP server, exposing the 4 tools.
-- `app/mcp_server/task_store.py` — simple JSON-file storage for tasks (`data/tasks.json`).
-- `frontend/` — the plain HTML/CSS/JS testing UI, no framework, served directly by FastAPI.
+Download your OAuth client as `credentials/credentials.json`. The first calendar request opens a browser window to authorize access and then writes `credentials/token.json`.
 
-## Testing the MCP server on its own
+### Run
 
-```bash
-venv/Scripts/python.exe -m app.mcp_server.server
+```powershell
+venv\Scripts\uvicorn app.main:app --reload --port 8000
 ```
-Should start and wait on stdio without crashing (Ctrl+C to stop). Run it with `-m`, not as a
-plain script, the absolute imports need the project root on the path, which only `-m` gives you.
+
+Open `http://localhost:8000` for the chat UI.
+
+## Usage
+
+Try messages such as:
+
+- "Show me my pending tasks"
+- "What meetings do I have tomorrow?"
+- "Add a task to submit the report, due 2026-11-02"
+- "Book Team Sync on 1 November 2026 from 3 PM to 3:30 PM" (if the slot is taken, the assistant reports the conflict and asks what to do instead)
+
+The chat endpoint can also be called directly:
+
+```text
+POST /chat
+{"message": "show me my pending tasks"}
+
+200: {"message": "...", "answer": "...", "tool_calls": ["get_tasks"]}
+500: {"error": "ASSISTANT_ERROR", "message": "The assistant could not process this message"}
+```
+
+`GET /health` returns `{"status": "healthy"}`.
+
+The MCP server can also be started on its own to check that it boots and waits on stdio (run it with `-m` from the project root, because the imports need the project root on the path, and keep `.env` in place because the settings load at import):
+
+```powershell
+venv\Scripts\python.exe -m app.mcp_server.server
+```
+
+### MCP tools
+
+| Tool | Parameters | Returns |
+|---|---|---|
+| `get_tasks` | none | List of `{id, title, due_date}` |
+| `create_task` | `title`, `due_date` (YYYY-MM-DD) | The created task |
+| `get_calendar_events` | `date` (YYYY-MM-DD) | List of `{id, title, start, end}` |
+| `create_calendar_event` | `title`, `start_time`, `end_time` (ISO 8601) | `{"booked": true, ...}` or `{"booked": false, "conflict": {...}}` |
+
+## Limitations and Roadmap
+
+- The MCP server path is hardcoded to `venv/Scripts/python.exe`, so setup is Windows-only for now. Using `sys.executable` would make it portable.
+- Conversation history is one shared in-memory list that grows without limit and resets on restart. There are no per-user sessions yet.
+- The calendar timezone is fixed to `Asia/Karachi` in `google_calendar_service.py`, and any offset in the supplied ISO time is replaced by it.
+- There are no automated tests, and the assistant cannot edit or delete tasks and events.
+
+## Author
+
+**Shahram Shafiq** - [GitHub](https://github.com/shahramshafiq) | [LinkedIn](https://www.linkedin.com/in/shahramshafiq/)
